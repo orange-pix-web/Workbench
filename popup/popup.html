@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PDD Local Publisher</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>PDD 本地上货</h1>
+      <span id="count">0 个任务</span>
+    </header>
+
+    <section class="card">
+      <label class="file-button">
+        导入 CSV / JSON
+        <input id="file" type="file" accept=".csv,.json,text/csv,application/json" />
+      </label>
+      <button id="download-template" class="secondary">下载 CSV 模板</button>
+      <p class="hint">数据仅保存在当前浏览器中。再次导入会追加到队列。</p>
+    </section>
+
+    <section class="actions">
+      <button id="start">打开下一个商品</button>
+      <button id="clear-completed" class="secondary">清除已完成</button>
+    </section>
+
+    <div id="message" role="status"></div>
+    <main id="queue"></main>
+
+    <footer>
+      <button id="export-log" class="link">导出日志</button>
+      <button id="options" class="link">设置</button>
+    </footer>
+
+    <script src="../shared/storage.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

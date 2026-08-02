@@ -1,0 +1,25 @@
+:root { color-scheme: light; font-family: system-ui, "Microsoft YaHei", sans-serif; }
+* { box-sizing: border-box; }
+body { width: 390px; margin: 0; padding: 16px; color: #202124; background: #f6f7f9; }
+header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+h1 { margin: 0; font-size: 19px; }
+#count { color: #6b7280; font-size: 12px; }
+.card { padding: 13px; background: white; border: 1px solid #e5e7eb; border-radius: 10px; }
+.file-button, button { border: 0; border-radius: 7px; padding: 9px 12px; cursor: pointer; font-size: 13px; }
+.file-button, button:not(.secondary):not(.link) { color: white; background: #e02e24; }
+.file-button { display: inline-block; }
+.file-button input { display: none; }
+button.secondary { margin-left: 6px; background: #eef0f3; color: #30343b; }
+.hint { margin: 10px 0 0; color: #71717a; font-size: 11px; line-height: 1.5; }
+.actions { display: flex; margin: 12px 0; }
+.actions button { flex: 1; }
+#message { min-height: 18px; margin: 5px 2px; color: #b42318; font-size: 12px; }
+#queue { max-height: 350px; overflow: auto; }
+.task { padding: 10px; margin-bottom: 7px; background: white; border-left: 4px solid #a1a1aa; border-radius: 7px; }
+.task.running { border-color: #f59e0b; }
+.task.completed { border-color: #16a34a; }
+.task.failed { border-color: #dc2626; }
+.task-title { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.task-meta { margin-top: 5px; color: #71717a; font-size: 11px; }
+footer { display: flex; justify-content: space-between; margin-top: 10px; }
+button.link { padding: 6px 2px; color: #2563eb; background: none; }

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>PDD 本地上货设置</title><link rel="stylesheet" href="options.css" /></head>
+  <body>
+    <main>
+      <h1>PDD 本地上货设置</h1>
+      <label>商品发布页地址<input id="publishUrl" type="url" /></label>
+      <label>填写完成后的动作
+        <select id="actionAfterFill"><option value="none">仅填写，人工确认</option><option value="draft">自动保存草稿</option><option value="submit">自动提交发布（高风险）</option></select>
+      </label>
+      <label>每步等待时间（毫秒）<input id="stepDelayMs" type="number" min="50" max="5000" /></label>
+      <label>自定义字段映射（JSON）<textarea id="mappings" rows="12" spellcheck="false"></textarea></label>
+      <p>映射格式示例：<code>{"title":["商品标题","请输入商品标题"]}</code>。数组中的文字用于匹配标签或 placeholder。</p>
+      <button id="save">保存设置</button><span id="message"></span>
+    </main>
+    <script src="../shared/storage.js"></script><script src="options.js"></script>
+  </body>
+</html>

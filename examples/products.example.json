@@ -1,0 +1,21 @@
+[
+  {
+    "title": "示例商品标题",
+    "category_path": "家居生活>清洁用品",
+    "carousel_images": [
+      "https://example.com/main-1.jpg",
+      "https://example.com/main-2.jpg"
+    ],
+    "detail_images": ["https://example.com/detail-1.jpg"],
+    "price": "25.60",
+    "market_price": "39.90",
+    "stock": 100,
+    "attributes": { "品牌": "其他" },
+    "skus": [
+      { "spec": { "规格": "500g" }, "price": "25.60", "market_price": "39.90", "stock": 100 }
+    ],
+    "logistics_template": "默认模板",
+    "shipping_hours": "48",
+    "description": "示例商品描述"
+  }
+]

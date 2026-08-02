@@ -1,0 +1,9 @@
+body { margin: 0; color: #202124; background: #f6f7f9; font-family: system-ui, "Microsoft YaHei", sans-serif; }
+main { max-width: 760px; margin: 40px auto; padding: 28px; background: white; border-radius: 12px; box-shadow: 0 4px 24px #0000000d; }
+h1 { margin-top: 0; }
+label { display: block; margin: 18px 0; font-weight: 600; }
+input, select, textarea { display: block; width: 100%; margin-top: 7px; padding: 9px; border: 1px solid #d4d4d8; border-radius: 6px; font: inherit; font-weight: 400; }
+textarea { font-family: Consolas, monospace; }
+button { padding: 10px 22px; color: white; background: #e02e24; border: 0; border-radius: 7px; cursor: pointer; }
+#message { margin-left: 12px; color: #15803d; }
+p { color: #71717a; font-size: 13px; }
