@@ -100,7 +100,9 @@
     for (const [name, value] of Object.entries(attributes)) {
       const field = findField([name]);
       if (!field) { logLine(`未找到属性：${name}`); continue; }
-      setNativeValue(field, String(value)); count += 1;
+      if (isCustomSelect(field)) await selectCustomOption(field, String(value));
+      else setNativeValue(field, String(value));
+      count += 1;
       await delay(settings.stepDelayMs);
     }
     return count;
@@ -140,14 +142,31 @@
     if (!specifications.size) return 0;
 
     let count = 0;
+    let specificationIndex = 0;
     for (const [name, values] of specifications) {
       let group = findSpecGroup(name);
       if (!group) {
-        const addButton = findButton(["添加规格", "添加商品规格", "新增规格"]);
-        if (addButton) {
+        let typeInputs = findSpecTypeInputs();
+        if (typeInputs.length <= specificationIndex) {
+          const addButton = findButton(["添加规格", "添加商品规格", "新增规格", "添加规格项"]);
+          if (addButton) {
+            addButton.click();
+            await delay(settings.stepDelayMs);
+            typeInputs = findSpecTypeInputs();
+          }
+        }
+        const typeInput = typeInputs[specificationIndex];
+        if (typeInput) {
+          await selectCustomOption(typeInput, name);
+          await delay(settings.stepDelayMs);
+          group = findSpecContainer(typeInput);
+        } else {
+          const addButton = findButton(["添加规格", "添加商品规格", "新增规格"]);
+          if (addButton) {
           addButton.click();
           await delay(settings.stepDelayMs);
           group = findEmptySpecGroup();
+          }
         }
       }
       if (!group) { logLine(`未找到规格组入口：${name}`); continue; }
@@ -173,6 +192,7 @@
         await delay(settings.stepDelayMs);
       }
       logLine(`规格：${name}（${[...values].join("、")}）`, "ok");
+      specificationIndex += 1;
     }
     // Give the page time to generate the Cartesian-product SKU table.
     await delay(Math.max(700, settings.stepDelayMs * 2));
@@ -183,6 +203,19 @@
     return [...document.querySelectorAll("section,fieldset,[class*=spec],[class*=sku],[class*=item]")]
       .filter(isVisible)
       .find((element) => normalizedText(element).includes(normalize(name)) && element.querySelector("input"));
+  }
+
+  function findSpecTypeInputs() {
+    return [...document.querySelectorAll('input[readonly][placeholder*="规格类型"],input[data-testid="beast-core-select-htmlInput"][placeholder*="规格"]')].filter(isVisible);
+  }
+
+  function findSpecContainer(input) {
+    let element = input.parentElement;
+    for (let depth = 0; element && depth < 8; depth += 1, element = element.parentElement) {
+      const text = normalizedText(element);
+      if (element.querySelectorAll("input").length >= 2 || /规格值|属性值|添加选项/.test(text)) return element;
+    }
+    return input.parentElement?.parentElement || input.parentElement;
   }
 
   function findEmptySpecGroup() {
@@ -215,7 +248,7 @@
 
   async function uploadImages(urls, localAssets, sectionNames) {
     if (!urls.length && !localAssets.length) return 0;
-    const input = findFileInput(sectionNames);
+    const input = await resolveFileInput(sectionNames);
     if (!input) { logLine(`未找到上传入口：${sectionNames[0]}`); return 0; }
     const files = [];
     for (const assetRef of localAssets) {
@@ -249,7 +282,58 @@
       const area = input.closest("section,fieldset,[class*=upload],[class*=form],[class*=item]") || input.parentElement;
       if (sectionNames.some((name) => normalizedText(area).includes(name))) return input;
     }
-    return inputs[0] || null;
+    return null;
+  }
+
+  async function resolveFileInput(sectionNames) {
+    const existing = findFileInput(sectionNames);
+    if (existing) return existing;
+
+    const isDetail = sectionNames.some((name) => /详情/.test(name));
+    if (!isDetail) return [...document.querySelectorAll('input[type="file"]')].filter(isVisibleOrAttached)[0] || null;
+
+    const before = new Set(document.querySelectorAll('input[type="file"]'));
+    const detailArea = findSmallestArea(["商品详情", "快捷编辑"]);
+    const embeddedInput = detailArea?.querySelector('input[type="file"]');
+    if (embeddedInput && isVisibleOrAttached(embeddedInput)) return embeddedInput;
+    const uploadButton = detailArea ? [...detailArea.querySelectorAll("button,[role=button]")].find((element) => isVisible(element) && normalizedText(element) === normalize("本地上传")) : null;
+    if (!uploadButton) {
+      logLine("商品详情区域未找到“本地上传”按钮", "error");
+      return null;
+    }
+    uploadButton.click();
+    logLine("已打开商品详情本地上传入口");
+    const newInput = await waitFor(() => {
+      const inputs = [...document.querySelectorAll('input[type="file"]')].filter(isVisibleOrAttached);
+      return inputs.find((input) => !before.has(input)) || inputs.find((input) => {
+        const area = input.closest('[role=dialog],[class*=modal],[class*=dialog]');
+        return area && isVisible(area);
+      });
+    }, 5000);
+    return newInput || null;
+  }
+
+  function findSmallestArea(requiredTexts) {
+    return [...document.querySelectorAll("section,fieldset,div")]
+      .filter((element) => isVisible(element) && requiredTexts.every((text) => normalizedText(element).includes(normalize(text))))
+      .sort((a, b) => a.querySelectorAll("*").length - b.querySelectorAll("*").length)[0] || null;
+  }
+
+  async function selectCustomOption(input, wantedText) {
+    input.click();
+    await delay(Math.max(150, settings.stepDelayMs));
+    const wanted = normalize(wantedText);
+    const candidates = [...document.querySelectorAll('[role="option"],li,[class*=option],[class*=Option],[data-testid*=option]')]
+      .filter(isVisible)
+      .sort((a, b) => a.querySelectorAll("*").length - b.querySelectorAll("*").length);
+    const option = candidates.find((element) => normalizedText(element) === wanted) || candidates.find((element) => normalizedText(element).includes(wanted));
+    if (!option) throw new Error(`下拉选项中找不到：${wantedText}`);
+    option.click();
+    await delay(settings.stepDelayMs);
+  }
+
+  function isCustomSelect(input) {
+    return input.matches('input[readonly],input[data-testid="beast-core-select-htmlInput"]');
   }
 
   function findField(names) {
@@ -350,6 +434,15 @@
   // Upload controls are commonly visually hidden and triggered by a styled button.
   function isVisibleOrAttached(element) { return element.isConnected && !element.disabled; }
   function delay(ms) { return new Promise((resolve) => setTimeout(resolve, Number(ms) || 0)); }
+  async function waitFor(getValue, timeoutMs) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const value = getValue();
+      if (value) return value;
+      await delay(100);
+    }
+    return null;
+  }
   function setButtonsDisabled(disabled) { document.querySelectorAll("#pdd-local-publisher-panel button").forEach((item) => { item.disabled = disabled; }); }
   function logLine(text, className = "") { const status = document.querySelector("#pdd-local-publisher-panel .pddlp-status"); if (!status) return; const line = document.createElement("div"); line.className = className; line.textContent = text; status.append(line); status.scrollTop = status.scrollHeight; }
 })();

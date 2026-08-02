@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PDD Local Publisher",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "本地导入商品数据并辅助填写拼多多商家后台发布页面，不使用 AI。",
   "icons": {
     "16": "icon.png",
