@@ -9,7 +9,9 @@ h1 { margin: 0; font-size: 19px; }
 .file-button, button:not(.secondary):not(.link) { color: white; background: #e02e24; }
 .file-button { display: inline-block; }
 .file-button input { display: none; }
-.local-file-button { display: block; margin-top: 9px; text-align: center; background: #2563eb; }
+.image-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
+.image-picker select { grid-column: 1 / -1; width: 100%; padding: 8px; border: 1px solid #d4d4d8; border-radius: 6px; background: white; }
+.image-picker button.image-button { margin: 0; color: white; background: #2563eb; }
 button.secondary { margin-left: 6px; background: #eef0f3; color: #30343b; }
 .hint { margin: 10px 0 0; color: #71717a; font-size: 11px; line-height: 1.5; }
 .actions { display: flex; margin: 12px 0; }

@@ -1,5 +1,14 @@
 const $ = (selector) => document.querySelector(selector);
 let pendingImageTarget = null;
+const COLUMN_ALIASES = {
+  商品编号: "product_id", 编号: "product_id", 商品标题: "title", 标题: "title", 类目: "category_path",
+  主图: "carousel_images", 轮播图: "carousel_images", 详情图: "detail_images", 视频: "video_url",
+  主图文件名: "carousel_files", 本地主图: "carousel_files", 详情图文件名: "detail_files", 本地详情图: "detail_files",
+  价格: "price", 拼单价: "price", 市场价: "market_price", 库存: "stock",
+  商品属性: "attributes_json", SKU: "sku_json", 物流模板: "logistics_template",
+  发货时效: "shipping_hours", 商品描述: "description", 款式: "style", 型号: "model",
+  规格价格: "sku_price", 规格库存: "sku_stock", 规格市场价: "sku_market_price"
+};
 
 document.addEventListener("DOMContentLoaded", async () => {
   await render();
@@ -10,7 +19,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#export-log").addEventListener("click", exportLogs);
   $("#options").addEventListener("click", () => chrome.runtime.openOptionsPage());
   $("#local-images").addEventListener("change", importLocalImages);
-  $("#batch-local-images").addEventListener("change", importBatchLocalImages);
+  $("#pick-main-images").addEventListener("click", () => chooseSelectedProductImages("carousel"));
+  $("#pick-detail-images").addEventListener("click", () => chooseSelectedProductImages("detail"));
 });
 
 async function importFile(event) {
@@ -19,7 +29,7 @@ async function importFile(event) {
   try {
     const text = await file.text();
     const rows = file.name.toLowerCase().endsWith(".json") ? parseJson(text) : parseCsv(text);
-    const tasks = rows.map(normalizeProduct);
+    const tasks = rowsToTasks(rows);
     const queue = await PDDStorage.getQueue();
     await PDDStorage.saveQueue([...queue, ...tasks]);
     show(`已导入 ${tasks.length} 个商品`, false);
@@ -60,17 +70,22 @@ function parseCsv(text) {
   return nonEmpty.slice(1).map((values) => Object.fromEntries(headers.map((key, i) => [key, values[i] ?? ""])));
 }
 
-function normalizeProduct(row, index) {
-  const aliases = {
-    商品标题: "title", 标题: "title", 类目: "category_path", 主图: "carousel_images",
-    轮播图: "carousel_images", 详情图: "detail_images", 视频: "video_url",
-    主图文件名: "carousel_files", 本地主图: "carousel_files", 详情图文件名: "detail_files", 本地详情图: "detail_files",
-    价格: "price", 拼单价: "price", 库存: "stock", 市场价: "market_price",
-    商品属性: "attributes_json", SKU: "sku_json", 物流模板: "logistics_template",
-    发货时效: "shipping_hours", 商品描述: "description"
-  };
-  const product = {};
-  for (const [key, value] of Object.entries(row)) product[aliases[key] || key] = value;
+function canonicalRow(row) {
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [COLUMN_ALIASES[key] || key, value]));
+}
+
+function rowsToTasks(rows) {
+  const groups = new Map();
+  rows.map(canonicalRow).forEach((row, index) => {
+    const key = String(row.product_id || `__row_${index}`).trim();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  });
+  return [...groups.values()].map((group, index) => normalizeProductGroup(group, index));
+}
+
+function normalizeProductGroup(rows, index) {
+  const product = { ...rows[0] };
   if (!String(product.title || "").trim()) throw new Error(`第 ${index + 1} 行缺少 title/商品标题`);
   for (const key of ["carousel_images", "detail_images"]) {
     if (typeof product[key] === "string") product[key] = product[key].split(/[|;\n]/).map((x) => x.trim()).filter(Boolean);
@@ -85,10 +100,24 @@ function normalizeProduct(row, index) {
     }
     delete product[key];
   }
+  const visibleSkus = rows.filter((row) => row.style || row.model || row.sku_price || row.sku_stock).map((row) => {
+    const spec = {};
+    if (row.style) spec["款式"] = row.style;
+    if (row.model) spec["型号"] = row.model;
+    return { spec, price: row.sku_price || row.price, market_price: row.sku_market_price || row.market_price, stock: Number(row.sku_stock || row.stock || 0) };
+  });
+  if (visibleSkus.length) product.skus = visibleSkus;
+  for (const key of ["style", "model", "sku_price", "sku_market_price", "sku_stock"]) delete product[key];
   return {
     id: crypto.randomUUID(), status: "pending", attempts: 0,
     createdAt: new Date().toISOString(), product
   };
+}
+
+function chooseSelectedProductImages(kind) {
+  const taskId = $("#image-task").value;
+  if (!taskId) return show("请先导入商品，并在图片区域选择一个商品");
+  chooseLocalImages(taskId, kind);
 }
 
 async function openNext() {
@@ -143,46 +172,6 @@ async function importLocalImages(event) {
   finally { event.target.value = ""; pendingImageTarget = null; }
 }
 
-async function importBatchLocalImages(event) {
-  const files = [...(event.target.files || [])];
-  if (!files.length) return;
-  try {
-    const queue = await PDDStorage.getQueue();
-    if (!queue.length) throw new Error("请先导入商品表，再选择图片");
-    const byName = new Map(files.map((file) => [file.name.toLowerCase(), file]));
-    let matched = 0;
-    const stored = new Map();
-    for (const task of queue) {
-      matched += await attachMatchingFiles(task, "carousel_files", "local_carousel_images", byName, stored);
-      matched += await attachMatchingFiles(task, "detail_files", "local_detail_images", byName, stored);
-    }
-    await PDDStorage.saveQueue(queue);
-    const requested = queue.reduce((sum, task) => sum + (task.product.carousel_files?.length || 0) + (task.product.detail_files?.length || 0), 0);
-    show(`已按文件名匹配 ${matched}/${requested} 张图片${matched < requested ? "，请检查文件名是否完全一致" : ""}`, matched < requested);
-    await render();
-  } catch (error) { show(`批量图片导入失败：${error.message}`); }
-  finally { event.target.value = ""; }
-}
-
-async function attachMatchingFiles(task, namesKey, assetsKey, byName, stored) {
-  let count = 0;
-  task.product[assetsKey] ||= [];
-  for (const requestedName of task.product[namesKey] || []) {
-    const file = byName.get(requestedName.toLowerCase());
-    if (!file) continue;
-    let asset = stored.get(file.name.toLowerCase());
-    if (!asset) {
-      const response = await chrome.runtime.sendMessage({ type: "STORE_ASSET", asset: { name: file.name, type: file.type, dataUrl: await fileToDataUrl(file) } });
-      if (!response?.ok) throw new Error(response?.error || `${file.name} 保存失败`);
-      asset = { id: response.id, name: file.name, type: file.type };
-      stored.set(file.name.toLowerCase(), asset);
-    }
-    if (!task.product[assetsKey].some((item) => item.id === asset.id)) task.product[assetsKey].push(asset);
-    count += 1;
-  }
-  return count;
-}
-
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -193,9 +182,12 @@ function fileToDataUrl(file) {
 }
 
 function downloadTemplate() {
-  const headers = ["商品标题", "类目", "主图文件名", "详情图文件名", "价格", "市场价", "库存", "商品属性", "SKU", "物流模板", "发货时效", "商品描述"];
-  const sample = ["示例商品标题", "家居生活>清洁用品", "主图1.jpg|主图2.jpg", "详情1.jpg|详情2.jpg", "25.60", "39.90", "100", "{\"品牌\":\"其他\"}", "[{\"spec\":{\"款式\":\"标准款\",\"型号\":\"500型\"},\"price\":\"25.60\",\"stock\":100}]", "默认模板", "48", "示例商品描述"];
-  const csv = `\uFEFF${headers.join(",")}\n${sample.map(csvEscape).join(",")}\n`;
+  const headers = ["商品编号", "商品标题", "类目", "款式", "型号", "规格价格", "规格市场价", "规格库存", "商品属性", "物流模板", "发货时效", "商品描述"];
+  const rows = [
+    ["P001", "示例商品标题", "家居生活>清洁用品", "标准款", "500型", "25.60", "39.90", "100", "{\"品牌\":\"其他\"}", "默认模板", "48", "示例商品描述"],
+    ["P001", "示例商品标题", "家居生活>清洁用品", "升级款", "500型", "29.90", "45.90", "80", "{\"品牌\":\"其他\"}", "默认模板", "48", "示例商品描述"]
+  ];
+  const csv = `\uFEFF${headers.join(",")}\n${rows.map((row) => row.map(csvEscape).join(",")).join("\n")}\n`;
   downloadBlob(csv, "pdd-products-template.csv", "text/csv;charset=utf-8");
 }
 
@@ -219,6 +211,11 @@ function downloadBlob(content, name, type) {
 async function render() {
   const queue = await PDDStorage.getQueue();
   $("#count").textContent = `${queue.length} 个任务`;
+  const previousSelection = $("#image-task").value;
+  $("#image-task").replaceChildren(...(queue.length ? queue : [{ id: "", product: { title: "② 先导入商品，再选择图片" } }]).map((task) => {
+    const option = document.createElement("option"); option.value = task.id; option.textContent = task.product.title; return option;
+  }));
+  if (queue.some((task) => task.id === previousSelection)) $("#image-task").value = previousSelection;
   $("#queue").replaceChildren(...queue.map((task) => {
     const item = document.createElement("article");
     item.className = `task ${task.status}`;

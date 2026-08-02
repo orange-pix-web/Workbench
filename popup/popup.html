@@ -17,12 +17,13 @@
         ① 导入商品表
         <input id="file" type="file" accept=".csv,.json,text/csv,application/json" />
       </label>
-      <button id="download-template" class="secondary">下载本地图片模板</button>
-      <label class="file-button local-file-button">
-        ② 批量选择本地图片
-        <input id="batch-local-images" type="file" accept="image/*" multiple />
-      </label>
-      <p class="hint">先导入商品表，再选择电脑图片。扩展按照模板中的图片文件名自动匹配；也可以在下方每个商品中单独补图。</p>
+      <button id="download-template" class="secondary">下载多规格模板</button>
+      <div class="image-picker">
+        <select id="image-task"><option value="">② 先导入商品，再选择图片</option></select>
+        <button id="pick-main-images" class="image-button">选择主图</button>
+        <button id="pick-detail-images" class="image-button">选择详情图</button>
+      </div>
+      <p class="hint">图片不用填写到表格：导入后选择商品，再从电脑多选主图或详情图。同一商品的多个规格在模板中分行填写。</p>
     </section>
 
     <section class="actions">
