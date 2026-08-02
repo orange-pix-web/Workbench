@@ -3,6 +3,12 @@
   "name": "PDD Local Publisher",
   "version": "0.1.0",
   "description": "本地导入商品数据并辅助填写拼多多商家后台发布页面，不使用 AI。",
+  "icons": {
+    "16": "icon.png",
+    "32": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
   "permissions": ["storage", "tabs", "activeTab", "scripting", "downloads"],
   "host_permissions": [
     "https://mms.pinduoduo.com/*",
@@ -13,6 +19,10 @@
   ],
   "action": {
     "default_title": "PDD Local Publisher",
+    "default_icon": {
+      "16": "icon.png",
+      "32": "icon.png"
+    },
     "default_popup": "popup/popup.html"
   },
   "background": {
