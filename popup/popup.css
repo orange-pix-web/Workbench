@@ -9,12 +9,14 @@ h1 { margin: 0; font-size: 19px; }
 .file-button, button:not(.secondary):not(.link) { color: white; background: #e02e24; }
 .file-button { display: inline-block; }
 .file-button input { display: none; }
+.local-file-button { display: block; margin-top: 9px; text-align: center; background: #2563eb; }
 button.secondary { margin-left: 6px; background: #eef0f3; color: #30343b; }
 .hint { margin: 10px 0 0; color: #71717a; font-size: 11px; line-height: 1.5; }
 .actions { display: flex; margin: 12px 0; }
 .actions button { flex: 1; }
 #message { min-height: 18px; margin: 5px 2px; color: #b42318; font-size: 12px; }
 #queue { max-height: 350px; overflow: auto; }
+.empty { padding: 22px 14px; color: #71717a; background: white; border: 1px dashed #d4d4d8; border-radius: 8px; text-align: center; font-size: 12px; line-height: 1.6; }
 .task { padding: 10px; margin-bottom: 7px; background: white; border-left: 4px solid #a1a1aa; border-radius: 7px; }
 .task.running { border-color: #f59e0b; }
 .task.completed { border-color: #16a34a; }

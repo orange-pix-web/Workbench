@@ -14,11 +14,15 @@
 
     <section class="card">
       <label class="file-button">
-        导入 CSV / JSON
+        ① 导入商品表
         <input id="file" type="file" accept=".csv,.json,text/csv,application/json" />
       </label>
-      <button id="download-template" class="secondary">下载 CSV 模板</button>
-      <p class="hint">数据仅保存在当前浏览器中。再次导入会追加到队列。</p>
+      <button id="download-template" class="secondary">下载本地图片模板</button>
+      <label class="file-button local-file-button">
+        ② 批量选择本地图片
+        <input id="batch-local-images" type="file" accept="image/*" multiple />
+      </label>
+      <p class="hint">先导入商品表，再选择电脑图片。扩展按照模板中的图片文件名自动匹配；也可以在下方每个商品中单独补图。</p>
     </section>
 
     <section class="actions">
@@ -27,7 +31,7 @@
     </section>
 
     <div id="message" role="status"></div>
-    <main id="queue"></main>
+    <main id="queue"><div class="empty">尚未导入商品。下载模板填写后，点击“① 导入商品表”。</div></main>
     <input id="local-images" type="file" accept="image/*" multiple hidden />
 
     <footer>

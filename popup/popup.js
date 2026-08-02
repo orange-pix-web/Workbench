@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#export-log").addEventListener("click", exportLogs);
   $("#options").addEventListener("click", () => chrome.runtime.openOptionsPage());
   $("#local-images").addEventListener("change", importLocalImages);
+  $("#batch-local-images").addEventListener("change", importBatchLocalImages);
 });
 
 async function importFile(event) {
@@ -63,6 +64,7 @@ function normalizeProduct(row, index) {
   const aliases = {
     商品标题: "title", 标题: "title", 类目: "category_path", 主图: "carousel_images",
     轮播图: "carousel_images", 详情图: "detail_images", 视频: "video_url",
+    主图文件名: "carousel_files", 本地主图: "carousel_files", 详情图文件名: "detail_files", 本地详情图: "detail_files",
     价格: "price", 拼单价: "price", 库存: "stock", 市场价: "market_price",
     商品属性: "attributes_json", SKU: "sku_json", 物流模板: "logistics_template",
     发货时效: "shipping_hours", 商品描述: "description"
@@ -71,6 +73,9 @@ function normalizeProduct(row, index) {
   for (const [key, value] of Object.entries(row)) product[aliases[key] || key] = value;
   if (!String(product.title || "").trim()) throw new Error(`第 ${index + 1} 行缺少 title/商品标题`);
   for (const key of ["carousel_images", "detail_images"]) {
+    if (typeof product[key] === "string") product[key] = product[key].split(/[|;\n]/).map((x) => x.trim()).filter(Boolean);
+  }
+  for (const key of ["carousel_files", "detail_files"]) {
     if (typeof product[key] === "string") product[key] = product[key].split(/[|;\n]/).map((x) => x.trim()).filter(Boolean);
   }
   for (const key of ["attributes_json", "sku_json"]) {
@@ -103,7 +108,8 @@ async function openNext() {
 async function clearCompleted() {
   const queue = await PDDStorage.getQueue();
   const completed = queue.filter((item) => item.status === "completed");
-  const ids = completed.flatMap((item) => [...(item.product.local_carousel_images || []), ...(item.product.local_detail_images || [])].map((asset) => asset.id));
+  const remainingIds = new Set(queue.filter((item) => item.status !== "completed").flatMap((item) => [...(item.product.local_carousel_images || []), ...(item.product.local_detail_images || [])].map((asset) => asset.id)));
+  const ids = completed.flatMap((item) => [...(item.product.local_carousel_images || []), ...(item.product.local_detail_images || [])].map((asset) => asset.id)).filter((id) => !remainingIds.has(id));
   if (ids.length) await chrome.runtime.sendMessage({ type: "DELETE_ASSETS", ids });
   await PDDStorage.saveQueue(queue.filter((item) => item.status !== "completed"));
   await render();
@@ -137,6 +143,46 @@ async function importLocalImages(event) {
   finally { event.target.value = ""; pendingImageTarget = null; }
 }
 
+async function importBatchLocalImages(event) {
+  const files = [...(event.target.files || [])];
+  if (!files.length) return;
+  try {
+    const queue = await PDDStorage.getQueue();
+    if (!queue.length) throw new Error("请先导入商品表，再选择图片");
+    const byName = new Map(files.map((file) => [file.name.toLowerCase(), file]));
+    let matched = 0;
+    const stored = new Map();
+    for (const task of queue) {
+      matched += await attachMatchingFiles(task, "carousel_files", "local_carousel_images", byName, stored);
+      matched += await attachMatchingFiles(task, "detail_files", "local_detail_images", byName, stored);
+    }
+    await PDDStorage.saveQueue(queue);
+    const requested = queue.reduce((sum, task) => sum + (task.product.carousel_files?.length || 0) + (task.product.detail_files?.length || 0), 0);
+    show(`已按文件名匹配 ${matched}/${requested} 张图片${matched < requested ? "，请检查文件名是否完全一致" : ""}`, matched < requested);
+    await render();
+  } catch (error) { show(`批量图片导入失败：${error.message}`); }
+  finally { event.target.value = ""; }
+}
+
+async function attachMatchingFiles(task, namesKey, assetsKey, byName, stored) {
+  let count = 0;
+  task.product[assetsKey] ||= [];
+  for (const requestedName of task.product[namesKey] || []) {
+    const file = byName.get(requestedName.toLowerCase());
+    if (!file) continue;
+    let asset = stored.get(file.name.toLowerCase());
+    if (!asset) {
+      const response = await chrome.runtime.sendMessage({ type: "STORE_ASSET", asset: { name: file.name, type: file.type, dataUrl: await fileToDataUrl(file) } });
+      if (!response?.ok) throw new Error(response?.error || `${file.name} 保存失败`);
+      asset = { id: response.id, name: file.name, type: file.type };
+      stored.set(file.name.toLowerCase(), asset);
+    }
+    if (!task.product[assetsKey].some((item) => item.id === asset.id)) task.product[assetsKey].push(asset);
+    count += 1;
+  }
+  return count;
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -147,8 +193,8 @@ function fileToDataUrl(file) {
 }
 
 function downloadTemplate() {
-  const headers = ["title", "category_path", "carousel_images", "detail_images", "video_url", "price", "market_price", "stock", "attributes_json", "sku_json", "logistics_template", "shipping_hours", "description"];
-  const sample = ["示例商品标题", "家居生活>清洁用品", "https://example.com/1.jpg|https://example.com/2.jpg", "https://example.com/detail.jpg", "", "25.60", "39.90", "100", "{\"品牌\":\"其他\"}", "[{\"spec\":{\"规格\":\"500g\"},\"price\":\"25.60\",\"stock\":100}]", "默认模板", "48", "示例商品描述"];
+  const headers = ["商品标题", "类目", "主图文件名", "详情图文件名", "价格", "市场价", "库存", "商品属性", "SKU", "物流模板", "发货时效", "商品描述"];
+  const sample = ["示例商品标题", "家居生活>清洁用品", "主图1.jpg|主图2.jpg", "详情1.jpg|详情2.jpg", "25.60", "39.90", "100", "{\"品牌\":\"其他\"}", "[{\"spec\":{\"款式\":\"标准款\",\"型号\":\"500型\"},\"price\":\"25.60\",\"stock\":100}]", "默认模板", "48", "示例商品描述"];
   const csv = `\uFEFF${headers.join(",")}\n${sample.map(csvEscape).join(",")}\n`;
   downloadBlob(csv, "pdd-products-template.csv", "text/csv;charset=utf-8");
 }
@@ -187,6 +233,10 @@ async function render() {
     tools.append(mainButton, detailButton);
     item.append(title, meta, tools); return item;
   }));
+  if (!queue.length) {
+    const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = "尚未导入商品。下载模板填写后，点击“① 导入商品表”。";
+    $("#queue").replaceChildren(empty);
+  }
 }
 
 function statusText(status) {
