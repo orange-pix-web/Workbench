@@ -81,9 +81,10 @@
     }
 
     filled += await fillAttributes(product.attributes || {});
+    filled += await fillSpecifications(product.skus || []);
     filled += await fillSkuFallback(product.skus || []);
-    filled += await uploadImages(product.carousel_images || [], ["商品轮播图", "商品主图"]);
-    filled += await uploadImages(product.detail_images || [], ["商品详情图", "详情图"]);
+    filled += await uploadImages(product.carousel_images || [], product.local_carousel_images || [], ["商品轮播图", "商品主图"]);
+    filled += await uploadImages(product.detail_images || [], product.local_detail_images || [], ["商品详情图", "详情图"]);
 
     const validation = validate(product);
     logLine(`完成：${filled} 项；${validation.length ? `提醒 ${validation.join("、")}` : "基础校验通过"}`, validation.length ? "error" : "ok");
@@ -110,16 +111,91 @@
     const rows = findSkuRows();
     if (!rows.length) { logLine("检测到 SKU 数据，但页面 SKU 表格尚未生成"); return 0; }
     let count = 0;
-    for (let i = 0; i < Math.min(rows.length, skus.length); i += 1) {
-      const inputs = [...rows[i].querySelectorAll("input:not([type=file])")].filter(isVisible);
-      const sku = skus[i];
-      const values = [sku.price, sku.market_price, sku.stock].filter((v) => v !== undefined);
-      for (let j = 0; j < Math.min(inputs.length, values.length); j += 1) {
-        setNativeValue(inputs[j], String(values[j])); count += 1;
+    for (const sku of skus) {
+      const specValues = Object.values(sku.spec || {}).map(normalize);
+      const row = rows.find((candidate) => specValues.every((value) => normalizedText(candidate).includes(value))) || rows[skus.indexOf(sku)];
+      if (!row) continue;
+      const inputs = [...row.querySelectorAll("input:not([type=file])")].filter(isVisible);
+      for (const input of inputs) {
+        const context = `${fieldContext(input)} ${inputColumnHeader(input)}`;
+        let value;
+        if (/市场价|单买价/.test(context)) value = sku.market_price;
+        else if (/库存/.test(context)) value = sku.stock;
+        else if (/价格|拼单价|活动价/.test(context)) value = sku.price;
+        if (value !== undefined && value !== "") { setNativeValue(input, String(value)); count += 1; }
       }
     }
     if (count) logLine(`已填写 SKU 表格 ${count} 个单元格`, "ok");
     return count;
+  }
+
+  async function fillSpecifications(skus) {
+    const specifications = new Map();
+    for (const sku of skus) {
+      for (const [name, value] of Object.entries(sku.spec || {})) {
+        if (!specifications.has(name)) specifications.set(name, new Set());
+        specifications.get(name).add(String(value));
+      }
+    }
+    if (!specifications.size) return 0;
+
+    let count = 0;
+    for (const [name, values] of specifications) {
+      let group = findSpecGroup(name);
+      if (!group) {
+        const addButton = findButton(["添加规格", "添加商品规格", "新增规格"]);
+        if (addButton) {
+          addButton.click();
+          await delay(settings.stepDelayMs);
+          group = findEmptySpecGroup();
+        }
+      }
+      if (!group) { logLine(`未找到规格组入口：${name}`); continue; }
+
+      const nameInput = [...group.querySelectorAll("input")].find((input) => fieldContext(input).includes("规格名") || fieldContext(input).includes("属性名"));
+      if (nameInput && !nameInput.value) {
+        setNativeValue(nameInput, name);
+        pressEnter(nameInput);
+        count += 1;
+        await delay(settings.stepDelayMs);
+      }
+
+      for (const value of values) {
+        if (normalizedText(group).includes(normalize(value))) continue;
+        const valueInput = [...group.querySelectorAll("input")].find((input) => {
+          const context = fieldContext(input);
+          return context.includes("规格值") || context.includes("属性值") || context.includes("添加选项");
+        });
+        if (!valueInput) { logLine(`未找到“${name}”的规格值输入框`); break; }
+        setNativeValue(valueInput, value);
+        pressEnter(valueInput);
+        count += 1;
+        await delay(settings.stepDelayMs);
+      }
+      logLine(`规格：${name}（${[...values].join("、")}）`, "ok");
+    }
+    // Give the page time to generate the Cartesian-product SKU table.
+    await delay(Math.max(700, settings.stepDelayMs * 2));
+    return count;
+  }
+
+  function findSpecGroup(name) {
+    return [...document.querySelectorAll("section,fieldset,[class*=spec],[class*=sku],[class*=item]")]
+      .filter(isVisible)
+      .find((element) => normalizedText(element).includes(normalize(name)) && element.querySelector("input"));
+  }
+
+  function findEmptySpecGroup() {
+    const candidates = [...document.querySelectorAll("section,fieldset,[class*=spec],[class*=sku],[class*=item]")].filter(isVisible);
+    return candidates.reverse().find((element) => [...element.querySelectorAll("input")].some((input) => /规格名|属性名/.test(fieldContext(input))));
+  }
+
+  function findButton(labels) {
+    return [...document.querySelectorAll("button,[role=button]")].find((element) => isVisible(element) && labels.some((label) => normalizedText(element).includes(normalize(label))));
+  }
+
+  function pressEnter(element) {
+    for (const type of ["keydown", "keypress", "keyup"]) element.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", bubbles: true }));
   }
 
   function findSkuRows() {
@@ -129,11 +205,27 @@
     });
   }
 
-  async function uploadImages(urls, sectionNames) {
-    if (!urls.length) return 0;
+  function inputColumnHeader(input) {
+    const cell = input.closest("td");
+    const table = input.closest("table");
+    if (!cell || !table) return "";
+    const headers = [...table.querySelectorAll("thead th")];
+    return normalize(headers[cell.cellIndex]?.textContent || "");
+  }
+
+  async function uploadImages(urls, localAssets, sectionNames) {
+    if (!urls.length && !localAssets.length) return 0;
     const input = findFileInput(sectionNames);
     if (!input) { logLine(`未找到上传入口：${sectionNames[0]}`); return 0; }
     const files = [];
+    for (const assetRef of localAssets) {
+      try {
+        const response = await chrome.runtime.sendMessage({ type: "GET_ASSET", id: assetRef.id });
+        if (!response?.ok) throw new Error(response?.error || "读取失败");
+        const asset = response.asset;
+        files.push(dataUrlToFile(asset.dataUrl, asset.name || `local-${asset.id}`));
+      } catch (error) { logLine(`本地图片 ${assetRef.name || assetRef.id} 失败：${error.message}`, "error"); }
+    }
     for (let i = 0; i < urls.length; i += 1) {
       try {
         logLine(`下载图片 ${i + 1}/${urls.length}…`);
@@ -224,7 +316,7 @@
   function validate(product) {
     const errors = [];
     if (!product.title) errors.push("缺少标题");
-    if (!product.carousel_images?.length) errors.push("缺少主图");
+    if (!product.carousel_images?.length && !product.local_carousel_images?.length) errors.push("缺少主图");
     if (!product.price && !product.skus?.length) errors.push("缺少价格/SKU");
     if (!product.stock && !product.skus?.length) errors.push("缺少库存/SKU");
     return errors;

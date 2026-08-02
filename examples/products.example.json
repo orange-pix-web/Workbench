@@ -12,7 +12,8 @@
     "stock": 100,
     "attributes": { "品牌": "其他" },
     "skus": [
-      { "spec": { "规格": "500g" }, "price": "25.60", "market_price": "39.90", "stock": 100 }
+      { "spec": { "款式": "标准款", "型号": "500型" }, "price": "25.60", "market_price": "39.90", "stock": 100 },
+      { "spec": { "款式": "升级款", "型号": "500型" }, "price": "29.90", "market_price": "45.90", "stock": 80 }
     ],
     "logistics_template": "默认模板",
     "shipping_hours": "48",

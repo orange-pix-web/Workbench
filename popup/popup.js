@@ -1,4 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
+let pendingImageTarget = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   await render();
@@ -8,6 +9,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#clear-completed").addEventListener("click", clearCompleted);
   $("#export-log").addEventListener("click", exportLogs);
   $("#options").addEventListener("click", () => chrome.runtime.openOptionsPage());
+  $("#local-images").addEventListener("change", importLocalImages);
 });
 
 async function importFile(event) {
@@ -100,8 +102,48 @@ async function openNext() {
 
 async function clearCompleted() {
   const queue = await PDDStorage.getQueue();
+  const completed = queue.filter((item) => item.status === "completed");
+  const ids = completed.flatMap((item) => [...(item.product.local_carousel_images || []), ...(item.product.local_detail_images || [])].map((asset) => asset.id));
+  if (ids.length) await chrome.runtime.sendMessage({ type: "DELETE_ASSETS", ids });
   await PDDStorage.saveQueue(queue.filter((item) => item.status !== "completed"));
   await render();
+}
+
+function chooseLocalImages(taskId, kind) {
+  pendingImageTarget = { taskId, kind };
+  $("#local-images").click();
+}
+
+async function importLocalImages(event) {
+  const files = [...(event.target.files || [])];
+  if (!files.length || !pendingImageTarget) return;
+  try {
+    const queue = await PDDStorage.getQueue();
+    const task = queue.find((item) => item.id === pendingImageTarget.taskId);
+    if (!task) throw new Error("任务不存在");
+    const key = pendingImageTarget.kind === "carousel" ? "local_carousel_images" : "local_detail_images";
+    task.product[key] ||= [];
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
+      const dataUrl = await fileToDataUrl(file);
+      const response = await chrome.runtime.sendMessage({ type: "STORE_ASSET", asset: { name: file.name, type: file.type, dataUrl } });
+      if (!response?.ok) throw new Error(response?.error || `${file.name} 保存失败`);
+      task.product[key].push({ id: response.id, name: file.name, type: file.type });
+    }
+    await PDDStorage.saveQueue(queue);
+    show(`已添加 ${files.length} 张本地图片`, false);
+    await render();
+  } catch (error) { show(`图片导入失败：${error.message}`); }
+  finally { event.target.value = ""; pendingImageTarget = null; }
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error("图片读取失败"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function downloadTemplate() {
@@ -136,8 +178,14 @@ async function render() {
     item.className = `task ${task.status}`;
     const title = document.createElement("div"); title.className = "task-title"; title.textContent = task.product.title;
     const meta = document.createElement("div"); meta.className = "task-meta";
-    meta.textContent = `${statusText(task.status)} · 尝试 ${task.attempts || 0} 次${task.error ? ` · ${task.error}` : ""}`;
-    item.append(title, meta); return item;
+    const mainCount = task.product.local_carousel_images?.length || 0;
+    const detailCount = task.product.local_detail_images?.length || 0;
+    meta.textContent = `${statusText(task.status)} · 尝试 ${task.attempts || 0} 次 · 本地主图 ${mainCount} · 详情图 ${detailCount}${task.error ? ` · ${task.error}` : ""}`;
+    const tools = document.createElement("div"); tools.className = "task-tools";
+    const mainButton = document.createElement("button"); mainButton.textContent = "+ 本地主图"; mainButton.addEventListener("click", () => chooseLocalImages(task.id, "carousel"));
+    const detailButton = document.createElement("button"); detailButton.textContent = "+ 本地详情图"; detailButton.addEventListener("click", () => chooseLocalImages(task.id, "detail"));
+    tools.append(mainButton, detailButton);
+    item.append(title, meta, tools); return item;
   }));
 }
 

@@ -21,5 +21,7 @@ button.secondary { margin-left: 6px; background: #eef0f3; color: #30343b; }
 .task.failed { border-color: #dc2626; }
 .task-title { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .task-meta { margin-top: 5px; color: #71717a; font-size: 11px; }
+.task-tools { display: flex; gap: 6px; margin-top: 8px; }
+.task-tools button { padding: 5px 8px; color: #30343b; background: #eef0f3; font-size: 11px; }
 footer { display: flex; justify-content: space-between; margin-top: 10px; }
 button.link { padding: 6px 2px; color: #2563eb; background: none; }
